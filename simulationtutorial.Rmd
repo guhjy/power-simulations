@@ -1,78 +1,19 @@
 ---
-title: "Intro to Power Analysis Using Simulation Methods"
-author: "Jessie Sun"
+title: "Power analysis for JCAL special issue"
+author: "Joshua Rosenberg"
 date: "15/11/2018"
 output: pdf_document
 ---
 
+Adapted from Jessie Sun's excellent tutorial.
+
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE)
 ```
-
-This is a very basic introduction to conducting power analyses based on simulations, using the *lavaan* package.
-
-## Types of Power Analysis
-
-1. *A priori power analysis:* What is the smallest sample size we need to have 80% power to detect an effect size of interest (e.g. $\beta$ = 0.20, $\beta$ = 0.50), at an alpha level of .05?
-2. *Sensitivity power analysis:* What is the smallest effect size we can detect with 80% power, given our sample size, at an alpha level of .05?
-3. *Post-hoc power analysis:* What power did we have to detect the observed effect size, given the sample size actually used, at an alpha level of .05?
-
-As Daniel Lakens has [explained elsewhere](http://daniellakens.blogspot.com/2014/12/observed-power-and-what-to-do-if-your.html), observed power (from a post-hoc power analysis) is a useless statistical concept. Thus, this tutorial will focus on a priori and sensitivity power analyses.
-
-(Note: You can also set different alpha thresholds and power goals, but to keep things simple, let's assume the standard .05 alpha threshold and the goal of 80% power.)
-
-## The Model
-
-As shown in Figure 1 below, we will be considering a fairly simple model, with two predictor variables $X_1$ and $X_2$, and one outcome variable, Y. All variables are observed.
-
-```{r, out.width = "300px", echo = FALSE}
-knitr::include_graphics("model.png")
-```
-
-*Figure 1.* Labelled multiple regression model. 
-
-## Our Goal 
-
-Our goal in this tutorial is to conduct a priori and sensitivity power analyses for the regression path for Y on $X_2$ ($\beta_{2}$). \pagebreak
-
-## Model Assumptions
-
-This model includes the following parameters:
-
--Variance of $X_1$ ($s^2_{X1}$)
-
--Variance of $X_2$ ($s^2_{X2}$)
-
--Covariance between X1 and X2 ($cov_{X1,X2}$)
-
--Regression path for Y on X1 ($\beta_{1}$)
-
--Regression path for Y on X2 ($\beta_{2}$)
-
--Residual variance of Y ($\epsilon_{Y}$)
-
-In this case, to conduct power analysis based on standardized effect sizes, we will: 
-
-1. Fix the variance of $X_1$ and $X_2$ to 1.
-2. Assume that Y has a variance of 1, such that the residual variance $\epsilon{Y}$ (i.e., the variance not explained by $X_1$ and $X_2$) will be equal to 1 - ($\beta_{1}$^2^ + $\beta_{2}$^2^). 
-
-Note that since we are using a standardized metric, $cov_{X1,X2}$ is now simply the correlation between $X_1$ and $X_2$ (i.e., $r_{X1,X2}$).
-
-To simulate data based on a **population model**, we need to make assumptions about each of the other parameters. Some of these assumptions might be based on existing data (e.g., you might already know how strongly $X_1$ and $X_2$ tend to be correlated in the literature), but at other times, they might seem somewhat arbitrary. Because of the potential arbitrariness of our assumptions, it is useful to simulate power under a range of different assumptions (e.g., what if the correlation between $X_1$ and $X_2$ was stronger, or if the regression path for $\beta_{1}$ was larger or smaller?).
-
-However, for the purposes of this tutorial, let's assume that $X_1$ and $X_2$ are moderately positively correlated (*r* = .30), and that $X_1$ positively predicts Y to a small extent ($\beta_{1}$ = 0.20).
-
-Figure 2 illustrates these assumptions.
-
-```{r, out.width = "300px", echo = FALSE}
-knitr::include_graphics("assumptions.png")
-```
-
-*Figure 2.* Labelled multiple regression model with model assumptions.
 
 ## A Priori Power Analysis
 
-Let's get started with an a priori power analysis. What is the smallest sample size we need to have 80% power to detect an effect size of $\beta_2$ = 0.20, at an alpha level of .05?
+Let's get started with an a priori power analysis. What is the smallest sample size we need to have 80% power to detect an effect size of $\beta_2$ = 0.25, at an alpha level of .05?
 
 First, we need to load the *lavaan* package
 
@@ -80,7 +21,7 @@ First, we need to load the *lavaan* package
 library(lavaan)
 ```
 
-Next, we need to specify the population model, based on the assumptions in Figure 2, plus our effect size of interest ($\beta_2$ = 0.20). This is the model that, at the population level, we assume is generating the data that we might see in any given dataset.
+Next, we need to specify the population model, based on the assumptions in Figure 2, plus our effect size of interest ($\beta_2$ = 0.25). This is the model that, at the population level, we assume is generating the data that we might see in any given dataset.
 
 Basic *lavaan* notation: a double ~~ denotes variances and covariances, whereas a single ~ denotes a regression path.
 
@@ -100,24 +41,24 @@ xx1~~1*xx1
 # correlation between X1 and X2 is assumed to be .30
 # x1~~.3*x2
 
-# regression path is assumed to be .20
-y~.20*x1
-y~.20*x2
-y~.20*x3
-y~.20*x4
-y~-.20*x5
-y~-.20*x6
-y~-.20*x7
-y~-.20*x8
+# regression path is assumed to be .25
+y~.25*x1
+y~.25*x2
+y~.25*x3
+y~.25*x4
+y~-.25*x5
+y~-.25*x6
+y~-.25*x7
+y~-.25*x8
 
-x1~.20*xx1
-x2~.20*xx1
-x3~.20*xx1
-x4~.20*xx1
-x5~-.20*xx1
-x6~-.20*xx1
-x7~-.20*xx1
-x8~-.20*xx1
+x1~.25*xx1
+x2~.25*xx1
+x3~.25*xx1
+x4~.25*xx1
+x5~-.25*xx1
+x6~-.25*xx1
+x7~-.25*xx1
+x8~-.25*xx1
 
 # # residual variance of Y is 1 - (.1^2 + .2^2) = .95
 # y~~.95*y
@@ -196,8 +137,6 @@ So, let's go ahead and simulate 1000 datasets, still assuming a sample size of 5
 ```{r}
 library(tidyverse)
 
-
-
 f <- function(sample_size_vector, fit_mod, pop_mod, n_iterations) {
     
     simulate_dataset <- function(iteration, fit_mod, pop_mod, sample_size) {
@@ -221,8 +160,13 @@ f <- function(sample_size_vector, fit_mod, pop_mod, n_iterations) {
     dl
 }
 
-ll <- purrr::map_df(.x = seq(50, 400, by = 25), .f = f, fit_mod = fitmod, pop_mod=popmod1, n_iterations = 1000)
+```
 
+```{r}
+ll <- purrr::map_df(.x = seq(50, 400, by = 25), .f = f, fit_mod = fitmod, pop_mod=popmod1, n_iterations = 1000)
+```
+
+```{r}
 ll %>% group_by(sample_size) %>% summarize(mean_estimate_power = mean(estimated_power))
 ```
 
