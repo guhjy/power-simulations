@@ -87,21 +87,41 @@ Basic *lavaan* notation: a double ~~ denotes variances and covariances, whereas 
 ```{r}
 
 popmod1 <- '
-# variances of X1 and X2 are fixed at 1
+# variances are fixed at 1
 x1~~1*x1
 x2~~1*x2
+x3~~1*x3
+x4~~1*x4
+x5~~1*x5
+x6~~1*x6
+x7~~1*x7
+x8~~1*x8
+xx1~~1*xx1
 
 # correlation between X1 and X2 is assumed to be .30
-x1~~.3*x2
+# x1~~.3*x2
 
-# regression path for Y on X1 is assumed to be .10
+# regression path is assumed to be .10
 y~.10*x1
+y~.10*x2
+y~.10*x3
+y~.10*x4
+y~.10*x5
+y~.10*x6
+y~.10*x7
+y~.10*x8
 
-# regression path of interest, Y on X2, is assumed to be .20
-y~.20*x2
+x1~.10*xx1
+x2~.10*xx1
+x3~.10*xx1
+x4~.10*xx1
+x5~.10*xx1
+x6~.10*xx1
+x7~.10*xx1
+x8~.10*xx1
 
-# residual variance of Y is 1 - (.1^2 + .2^2) = .95
-y~~.95*y
+# # residual variance of Y is 1 - (.1^2 + .2^2) = .95
+# y~~.95*y
 '
 
 ```
@@ -111,23 +131,43 @@ We also need to create another *lavaan* model, without those population-level as
 ```{r}
 
 fitmod <- '
-# variances of X1 and X2
-x1~~x1
-x2~~x2
+# # variances of X1 and X2
+# x1~~x1
+# x2~~x2
+# x3~~x3
+# x4~~x4
+# x5~~x5
+# x6~~x6
+# x7~~x7
+# x8~~x8
 
-# correlation between X1 and X2
-x1~~x2
+# # correlation between X1 and X2
+# x1~~x2
 
 # regression path for Y on X1
 y~x1
+y~x2
+y~x3
+y~x4
+y~x5
+y~x6
+y~x7
+y~x8
 
 # regression path of interest, Y on X2
-y~x2
+x1~xx1
+x2~xx1
+x3~xx1
+x4~xx1
+x5~xx1
+x6~xx1
+x7~xx1
+x8~xx1
 
-# residual variance of Y
-y~~y
+
+# # residual variance of Y
+# y~~y
 '
-
 ```
 
 To see the logic of the simulation process, let's first just simulate one dataset based on the population model, popmod1.
@@ -157,7 +197,7 @@ So, let's go ahead and simulate 1000 datasets, still assuming a sample size of 5
 ```{r}
 results <- NULL  # create empty object to store results
 
-for (i in 1:1000){  # simulating 1000 datasets
+for (i in 1:10){  # simulating 1000 datasets
   data <- simulateData(popmod1, sample.nobs = 500)  # each dataset contains 500 participants
   fit <- sem(model = fitmod, data=data, fixed.x=F)  # fit the model to each dataset
   results <- rbind(results,parameterEstimates(fit)[5,])  # save the row for y ~ x2 for each dataset
@@ -235,136 +275,3 @@ paste0('The smallest sample size that provided at least 80% power was N = ',
        powertable[which(powertable$power>.80),'N'][1])
 
 ```
-
-### Try it Out: Alternative Effect Sizes
-
-In this example, we have assumed that we are interested in detecting an effect size at least as great as $\beta_2$ = 0.20. But of course, you might be interested in detecting smaller or larger effect sizes. Can you try adapting the population model, and re-run the simulations for different effect sizes?
-
-```{r}
-
-
-```
-
-## Sensitivity Power Analysis
-
-Instead of specifying an **effect size of interest**, you might already have a **predefined sample size** (e.g., due to time and financial constraints, or already-collected data). In this case, you can ask the question: What is the smallest effect size we can detect with at least 80% power, given our sample size? Let's assume that we have a sample size of *N* = 500.
-
-This time, we'll need to generate a series of population models with different effect sizes. Just as before, it's a good idea to start with larger increments (e.g., effect sizes from .10 to .50, in increments of .10) and fewer simulations, then refine the simulations in a second round.
-
-```{r}
-
-# First, we need to create a template for the population model
-popmodtemplate <- '
-# variances of X1 and X2 are fixed at 1
-x1~~1*x1
-x2~~1*x2
-
-# correlation between X1 and X2 is assumed to be .30
-x1~~.3*x2
-
-# regression path for Y on X1 is assumed to be .10
-y~.10*x1
-
-# regression path of interest, Y on X2, will be varied
-y~beta2*x2  # we will be substituting different effect sizes into beta2
-
-# residual variance of Y
-y~~resy*y  # we will be substituting different effect sizes into res, depending on beta2
-'
-
-# Use this template to generate a series of population model 
-# syntaxes with varying sizes of beta2
-
-popmodlist <- list()
-
-for(i in seq(0.10,0.50,by=0.10)){
-  popmodlist[[paste0(i)]] <- gsub('beta2',i,popmodtemplate)
-  popmodlist[[paste0(i)]] <- gsub('resy',paste0(1-(.1^2+i^2)),popmodlist[[paste0(i)]])
-}
-
-```
-
-Now that we have our initial list of population models, we can run the first round of simulations to get our ballpark estimates.
-
-```{r}
-# create a list to store power estimates for each effect size
-powerlist <- list()
-
-# this time, the outside for() loop is for each of the different population models/effect sizes
-for(j in names(popmodlist)){
-  results <- NULL 
-  for (i in 1:100){  # starting with 100 datasets for each effect size
-    data <- simulateData(popmodlist[[j]],  # for a given population model
-                         sample.nobs = 500)  # assuming a sample size of 500
-    fit <- sem(model = fitmod, data=data, fixed.x=F)  # fitmod is the same as for the a priori power analysis
-    results <- rbind(results,parameterEstimates(fit)[5,])  # row for y ~ x2
-    powerlist[[j]] <- mean(results$pvalue < .05)
-  }
-}
-
-# Convert the power list into a table
-powertable <- ldply(powerlist)
-names(powertable) <- c('beta2','power')
-
-# Here are all the power estimates:
-powertable
-
-# Conclusion:
-paste0('The smallest effect size that could be detected with at least 80% power was beta = ',
-       powertable[which(powertable$power>.80),'beta2'][1])
-
-```
-
-Now that we know the ballpark is between $\beta_{2}$ = 0.10 and $\beta_{2}$ = 0.20, we can repeat the process with narrower increments, and more simulations:
-
-```{r}
-
-# create population models
-popmodlist <- list()
-
-for(i in seq(0.10,0.20,by=0.01)){
-  popmodlist[[paste0(i)]] <- gsub('beta2',i,popmodtemplate)
-  popmodlist[[paste0(i)]] <- gsub('resy',paste0(1-(.1^2+i^2)),popmodlist[[paste0(i)]])
-}
-
-# create a list to store power estimates for each effect size
-powerlist <- list()
-
-# this time, the outside for() loop is for each of the different population models/effect sizes
-for(j in names(popmodlist)){
-  results <- NULL 
-  for (i in 1:1000){  # 1000 simulations for each model
-    data <- simulateData(popmodlist[[j]],  # for a given population model
-                         sample.nobs = 500)  # assuming a sample size of 500
-    fit <- sem(model = fitmod, data=data, fixed.x=F)  # fitmod is the same as for the a priori power analysis
-    results <- rbind(results,parameterEstimates(fit)[5,])  # row for y ~ x2
-    powerlist[[j]] <- mean(results$pvalue < .05)
-  }
-}
-
-# Convert the power list into a table
-powertable <- ldply(powerlist)
-names(powertable) <- c('beta2','power')
-
-# Here are all the power estimates:
-powertable
-
-# Conclusion:
-paste0('The smallest effect size that could be detected with at least 80% power was beta = ',
-       powertable[which(powertable$power>.80),'beta2'][1])
-
-```
-
-### Try it Out: Alternative Sample Sizes
-
-In this example, we have assumed that we only have 500 participants. Can you try adapting the code to run sensitivity power analyses assuming a different sample size (e.g., 300 participants)?
-
-```{r}
-
-
-```
-
-## Contact
-
-Feel free to use and adapt for teaching and research purposes (with attribution), and please get in touch (jesun@ucdavis.edu) if you spot any errors!
-
