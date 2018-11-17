@@ -60,7 +60,7 @@ Note that since we are using a standardized metric, $cov_{X1,X2}$ is now simply 
 
 To simulate data based on a **population model**, we need to make assumptions about each of the other parameters. Some of these assumptions might be based on existing data (e.g., you might already know how strongly $X_1$ and $X_2$ tend to be correlated in the literature), but at other times, they might seem somewhat arbitrary. Because of the potential arbitrariness of our assumptions, it is useful to simulate power under a range of different assumptions (e.g., what if the correlation between $X_1$ and $X_2$ was stronger, or if the regression path for $\beta_{1}$ was larger or smaller?).
 
-However, for the purposes of this tutorial, let's assume that $X_1$ and $X_2$ are moderately positively correlated (*r* = .30), and that $X_1$ positively predicts Y to a small extent ($\beta_{1}$ = 0.10).
+However, for the purposes of this tutorial, let's assume that $X_1$ and $X_2$ are moderately positively correlated (*r* = .30), and that $X_1$ positively predicts Y to a small extent ($\beta_{1}$ = 0.20).
 
 Figure 2 illustrates these assumptions.
 
@@ -85,7 +85,6 @@ Next, we need to specify the population model, based on the assumptions in Figur
 Basic *lavaan* notation: a double ~~ denotes variances and covariances, whereas a single ~ denotes a regression path.
 
 ```{r}
-
 popmod1 <- '
 # variances are fixed at 1
 x1~~1*x1
@@ -101,24 +100,24 @@ xx1~~1*xx1
 # correlation between X1 and X2 is assumed to be .30
 # x1~~.3*x2
 
-# regression path is assumed to be .10
-y~.10*x1
-y~.10*x2
-y~.10*x3
-y~.10*x4
-y~.10*x5
-y~.10*x6
-y~.10*x7
-y~.10*x8
+# regression path is assumed to be .20
+y~.20*x1
+y~.20*x2
+y~.20*x3
+y~.20*x4
+y~-.20*x5
+y~-.20*x6
+y~-.20*x7
+y~-.20*x8
 
-x1~.10*xx1
-x2~.10*xx1
-x3~.10*xx1
-x4~.10*xx1
-x5~.10*xx1
-x6~.10*xx1
-x7~.10*xx1
-x8~.10*xx1
+x1~.20*xx1
+x2~.20*xx1
+x3~.20*xx1
+x4~.20*xx1
+x5~-.20*xx1
+x6~-.20*xx1
+x7~-.20*xx1
+x8~-.20*xx1
 
 # # residual variance of Y is 1 - (.1^2 + .2^2) = .95
 # y~~.95*y
@@ -174,7 +173,7 @@ To see the logic of the simulation process, let's first just simulate one datase
 
 ```{r}
 set.seed(20181102)  # setting a seed for reproducibility of the example
-data <- simulateData(popmod1, sample.nobs = 500)  # assume 500 participants for now
+data <- simulateData(popmod1, sample.nobs = 300)  # assume 500 participants for now
 ```
 
 Now, we're going to fit our model (fitmod) to this dataset.
@@ -187,7 +186,7 @@ Here are the parameter estimates. The parameter of interest, y  ~  x2, is in row
 
 ```{r}
 parameterEstimates(fit)  # see all parameters
-parameterEstimates(fit)[5,]  # isolating the row with the parameter of interest
+# parameterEstimates(fit)[5,]  # isolating the row with the parameter of interest
 ```
 
 However, to estimate power, we need to simulate many datasets. Then, we can obtain the % of datasets in which the parameter of interest is statistically significant. This is our power estimate.
@@ -195,83 +194,37 @@ However, to estimate power, we need to simulate many datasets. Then, we can obta
 So, let's go ahead and simulate 1000 datasets, still assuming a sample size of 500.
 
 ```{r}
-results <- NULL  # create empty object to store results
+library(tidyverse)
 
-for (i in 1:10){  # simulating 1000 datasets
-  data <- simulateData(popmod1, sample.nobs = 500)  # each dataset contains 500 participants
-  fit <- sem(model = fitmod, data=data, fixed.x=F)  # fit the model to each dataset
-  results <- rbind(results,parameterEstimates(fit)[5,])  # save the row for y ~ x2 for each dataset
+
+
+f <- function(sample_size_vector, fit_mod, pop_mod, n_iterations) {
+    
+    simulate_dataset <- function(iteration, fit_mod, pop_mod, sample_size) {
+        data <- simulateData(pop_mod, sample.nobs = sample_size)
+        fit <- sem(model = fit_mod, data=data, fixed.x = F) 
+        d <- as.data.frame(parameterEstimates(fit))[1:16, c(1:7)]
+        d$iteration <- iteration
+        d
+    }
+    
+    l <- purrr::map_df(.x = 1:n_iterations, .f = simulate_dataset, fit_mod = fitmod, pop_mod=popmod1, sample_size = sample_size_vector)
+    
+    dl <- l %>% 
+        as_tibble() %>% 
+        unite(path, lhs, op, rhs, sep = "") %>% 
+        group_by(path) %>% 
+        summarize(estimated_power = mean(pvalue < .05))
+    
+    dl$sample_size <- sample_size_vector
+    
+    dl
 }
 
-# Count the proportion of significant parameter estimates out of 1000 datasets
-paste0('Estimated power = ',mean(results$pvalue < .05))
+ll <- purrr::map_df(.x = seq(50, 400, by = 25), .f = f, fit_mod = fitmod, pop_mod=popmod1, n_iterations = 1000)
+
+ll %>% group_by(sample_size) %>% summarize(mean_estimate_power = mean(estimated_power))
 ```
 
-As you can see, power in this example was excellent; we were able to detect the effect of interest in 99.4% of those 1,000 simulations.
-
-Now, let's simulate some results based on different sample sizes. It's a good idea to start with rough increments (e.g., *N* = 100, 200, 300, 400) and fewer datasets (e.g., 100) to save computing time. Then once you know which ballpark to aim for, re-run the simulations based on narrower increments (e.g., increments of *N* = 10) and more datasets (e.g., 1000) to get a more exact estimate of sample requirements.
-
 ```{r}
-# now that we are trying a few different sample sizes, we need to create a list to store these results
-powerlist <- list()  
-
-# extending the for() loop with a loop for different sample sizes
-for(j in seq(100,400,by=100)){  # trying sample sizes of 100, 200, 300, 400
-  results <- NULL 
-  for (i in 1:100){  # starting with 100 datasets for each sample size
-    data <- simulateData(popmod1, sample.nobs = j)  # j corresponds to the sample size
-    fit <- sem(model = fitmod, data=data, fixed.x=F)
-    results <- rbind(results,parameterEstimates(fit)[5,])  # row for y ~ x2
-    powerlist[[j]] <- mean(results$pvalue < .05)
-  }
-}
-
-# Convert the power list into a table
-library(plyr)
-powertable <- ldply(powerlist)
-names(powertable)[1] <- c('power')
-
-# Add a column for the sample size
-powertable$N <- seq(100,400,by=100)
-
-# Here are all the power estimates:
-powertable
-
-# Conclusion:
-paste0('The smallest sample size that provided at least 80% power was N = ',
-       powertable[which(powertable$power>.80),'N'][1])
-
-```
-
-Based on 200 simulations, it seems like the ballpark for 80% power is between 150 and 250 participants. So now let's re-run the simulations, but in increments of *N* = 10, and with 1000 simulations each.
-
-```{r}
-# create a list to store these results for different sample sizes
-powerlist <- list()  
-
-# extending the for() loop with a loop for different sample sizes
-for(j in seq(150,250,by=10)){  # trying sample sizes between 150 to 250, in increments of 10
-  results <- NULL 
-  for (i in 1:1000){  # now simulating 1000 datasets for each sample size
-    data <- simulateData(popmod1, sample.nobs = j)  # j corresponds to the sample size
-    fit <- sem(model = fitmod, data=data, fixed.x=F)
-    results <- rbind(results,parameterEstimates(fit)[5,])  # row for y ~ x2
-    powerlist[[j]] <- mean(results$pvalue < .05)
-  }
-}
-
-# Convert the power list into a table
-powertable <- ldply(powerlist)
-names(powertable)[1] <- c('power')
-
-# Add a column for the sample size
-powertable$N <- seq(150,250,by=10)
-
-# Here are all the power estimates:
-powertable
-
-# Conclusion:
-paste0('The smallest sample size that provided at least 80% power was N = ',
-       powertable[which(powertable$power>.80),'N'][1])
-
 ```
