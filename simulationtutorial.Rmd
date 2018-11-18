@@ -1,31 +1,32 @@
 ---
-title: "Power analysis for JCAL special issue"
+title: "Power analysis for TAM and EVT"
 author: "Joshua Rosenberg"
-date: "15/11/2018"
-output: pdf_document
+date: "11/18/2018"
+output:
+  html_document:
+    df_print: paged
 ---
 
-Adapted from Jessie Sun's excellent tutorial.
+Adapted from Jessie Sun's excellent tutorial [here](https://github.com/jessiesunpsych/power-simulations).
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, cache = TRUE)
 ```
 
-## A Priori Power Analysis
+What is the smallest sample size we need to have 80% power to detect an effect size of $\beta_2$ = 0.25, at an alpha level of .05?
 
-Let's get started with an a priori power analysis. What is the smallest sample size we need to have 80% power to detect an effect size of $\beta_2$ = 0.25, at an alpha level of .05?
+First, we need to load the *lavaan* package. We also load the **tidyverse** package for some manipuation later on.
 
-First, we need to load the *lavaan* package
-
-```{r}
+```{r, loading, setting-up}
 library(lavaan)
+library(tidyverse)
 ```
 
 Next, we need to specify the population model, based on the assumptions in Figure 2, plus our effect size of interest ($\beta_2$ = 0.25). This is the model that, at the population level, we assume is generating the data that we might see in any given dataset.
 
 Basic *lavaan* notation: a double ~~ denotes variances and covariances, whereas a single ~ denotes a regression path.
 
-```{r}
+```{r, popmod}
 popmod1 <- '
 # variances are fixed at 1
 x1~~1*x1
@@ -37,9 +38,6 @@ x6~~1*x6
 x7~~1*x7
 x8~~1*x8
 xx1~~1*xx1
-
-# correlation between X1 and X2 is assumed to be .30
-# x1~~.3*x2
 
 # regression path is assumed to be .25
 y~.25*x1
@@ -59,16 +57,13 @@ x5~-.25*xx1
 x6~-.25*xx1
 x7~-.25*xx1
 x8~-.25*xx1
-
-# # residual variance of Y is 1 - (.1^2 + .2^2) = .95
-# y~~.95*y
 '
 
 ```
 
 We also need to create another *lavaan* model, without those population-level assumptions.
 
-```{r}
+```{r, fitmod}
 
 fitmod <- '
 # # variances of X1 and X2
@@ -80,9 +75,6 @@ fitmod <- '
 # x6~~x6
 # x7~~x7
 # x8~~x8
-
-# # correlation between X1 and X2
-# x1~~x2
 
 # regression path for Y on X1
 y~x1
@@ -103,41 +95,15 @@ x5~xx1
 x6~xx1
 x7~xx1
 x8~xx1
-
-
-# # residual variance of Y
-# y~~y
 '
 ```
 
-To see the logic of the simulation process, let's first just simulate one dataset based on the population model, popmod1.
+To estimate power, we need to simulate many datasets. Then, we can obtain the % of datasets in which the parameter of interest is statistically significant. This is our power estimate.
 
-```{r}
-set.seed(20181102)  # setting a seed for reproducibility of the example
-data <- simulateData(popmod1, sample.nobs = 300)  # assume 500 participants for now
-```
+So, let's go ahead and simulate 1000 datasets with different sample sizes to determine where the power reaches .90. 
 
-Now, we're going to fit our model (fitmod) to this dataset.
-
-```{r}
-fit <- sem(model = fitmod, data=data, fixed.x=F)
-```
-
-Here are the parameter estimates. The parameter of interest, y  ~  x2, is in row 5. As you can see, this parameter was statistically significant (*p* < .005) in this simulation based on one dataset.
-
-```{r}
-parameterEstimates(fit)  # see all parameters
-# parameterEstimates(fit)[5,]  # isolating the row with the parameter of interest
-```
-
-However, to estimate power, we need to simulate many datasets. Then, we can obtain the % of datasets in which the parameter of interest is statistically significant. This is our power estimate.
-
-So, let's go ahead and simulate 1000 datasets, still assuming a sample size of 500.
-
-```{r}
-library(tidyverse)
-
-f <- function(sample_size_vector, fit_mod, pop_mod, n_iterations) {
+```{r, fit-function}
+fit_function <- function(sample_size_vector, fit_mod, pop_mod, n_iterations) {
     
     simulate_dataset <- function(iteration, fit_mod, pop_mod, sample_size) {
         data <- simulateData(pop_mod, sample.nobs = sample_size)
@@ -162,13 +128,14 @@ f <- function(sample_size_vector, fit_mod, pop_mod, n_iterations) {
 
 ```
 
-```{r}
-ll <- purrr::map_df(.x = seq(50, 400, by = 25), .f = f, fit_mod = fitmod, pop_mod=popmod1, n_iterations = 1000)
+Past tests showed that the sample size needed was between 150 and 200, so samples with increments of five between these values are evaluated and presented here. 
+
+```{r, iterate-with-purrr}
+ll <- purrr::map_df(.x = seq(150, 200, by = 5), .f = fit_function, fit_mod = fitmod, pop_mod=popmod1, n_iterations = 1000)
 ```
 
-```{r}
+```{r, present-results}
 ll %>% group_by(sample_size) %>% summarize(mean_estimate_power = mean(estimated_power))
 ```
 
-```{r}
-```
+For a standardized path with an effect of .25, given the only assumptions of the model being the regression paths of interest having this value, a sample size of approximately 175 is needed. 
