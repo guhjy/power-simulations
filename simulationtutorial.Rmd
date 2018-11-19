@@ -10,7 +10,7 @@ output:
 Adapted from Jessie Sun's excellent tutorial [here](https://github.com/jessiesunpsych/power-simulations).
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, cache = TRUE)
+knitr::opts_chunk$set(echo = TRUE, cache = FALSE)
 ```
 
 What is the smallest sample size we need to have 80% power to detect an effect size of $\beta_2$ = 0.25, at an alpha level of .05?
@@ -38,6 +38,7 @@ x6~~1*x6
 x7~~1*x7
 x8~~1*x8
 xx1~~1*xx1
+y~~1*y
 
 # regression path is assumed to be .25
 y~.25*x1
@@ -48,6 +49,7 @@ y~-.25*x5
 y~-.25*x6
 y~-.25*x7
 y~-.25*x8
+y~.25*y2
 
 x1~.25*xx1
 x2~.25*xx1
