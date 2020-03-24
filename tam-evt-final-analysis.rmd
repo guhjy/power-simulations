@@ -1,0 +1,931 @@
+---
+title: "TAV-EVT analysis for JCAL"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+date: "2020-02-08"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE,warning=FALSE)
+```
+
+# Loading, setting up
+
+```{r}
+library(readxl)
+library(tidyverse)
+library(lavaan)
+library(semTools)
+library(jmRtools) # devtools::install_github("jrosen48/jmRtools")
+
+d <- read_excel("R_Dataset_v2.xlsx")
+```
+
+```{r}
+# - expctncy_s__23 (Needs to be reversed)
+d$expectancy_success__23 <- sjmisc::rec(d$expectancy_success__23, rec = "1=5;2=4;3=3;4=2;5=1")
+```
+
+# Preliminary analysis
+
+## Checking for missing data
+
+no missingness in this data
+
+```{r}
+# d %>% select(tam_perceived_usefulness_1:full_cost_emotional_cost_59) %>% complete.cases()
+d %>% select(tam_perceived_usefulness_1:full_cost_emotional_cost_59) %>% complete.cases() %>% table()
+```
+
+## Demographic info
+
+```{r}
+# age
+d %>% 
+  skimr::skim(Q3)
+
+# gender
+d %>% 
+  janitor::tabyl(Q29)
+
+# ethnic background
+d %>% 
+  janitor::tabyl(Q31) %>% arrange(desc(n)) %>% data.table::data.table()
+
+# english first language
+d %>% 
+  janitor::tabyl(Q26)
+
+# computer access at home, years of usage, hours of use not examined
+```
+
+## Descriptives at the item-level
+
+```{r}
+d %>% select(tam_perceived_usefulness_1:full_cost_emotional_cost_59) %>% 
+  mutate_all(as.numeric) %>% 
+  psych::describe()
+```
+
+```{r}
+d %>% 
+  select(tam_perceived_usefulness_1:full_cost_emotional_cost_59) %>% 
+  mutate_all(as.numeric) %>% 
+  corrr::correlate()
+```
+
+## Descriptives at the composite level 
+
+```{r}
+
+composite_mean_maker <- function (x, ...) {
+  out <- dplyr::select(x, ...)
+  out <- mutate_all(out, as.numeric)
+  out <- apply(out, 1, function(x) mean(x, na.rm = T))
+  out[is.nan(out)] <- NA
+  return(out)
+}
+
+o <- d %>% 
+  transmute(perceived_usefulness = composite_mean_maker(., tam_perceived_usefulness_1,
+                                                        tam_perceived_usefulness_9,
+                                                        tam_perceived_usefulness_11,
+                                                        tam_perceived_usefulness_15),
+            subjective_norms = composite_mean_maker(., 
+                                                    tam_subjective_norm_2,
+                                                    tam_subjective_norm_4),
+            facilitating_conditions = composite_mean_maker(.,
+                                                          tam_facilitating_condition_5,
+                                                          tam_facilitating_condition_13),
+            perceived_ease_use = composite_mean_maker(., tam_perceived_ease_use_3,
+                                                      tam_perceived_ease_use_10,
+                                                      # tam_perceived_ease_use_12,
+                                                      tam_perceived_ease_use_16),
+            computer_attitudes = composite_mean_maker(., tam_computer_attitudes_6,
+                                                      tam_computer_attitudes_7,
+                                                      tam_computer_attitudes_8,
+                                                      tam_computer_attitudes_14),
+            #tam_computer_attitudes_17),
+            attainment = composite_mean_maker(., task_value_attainment_value_27,
+                                              task_value_attainment_value_31,
+                                              task_value_attainment_value_33,
+                                              task_value_attainment_value_36,
+                                              task_value_attainment_value_38),
+            interest = composite_mean_maker(., task_value_interest_value_29,
+                                            task_value_interest_value_32,
+                                            task_value_interest_value_37,
+                                            task_value_interest_value_40),
+            utility = composite_mean_maker(., task_value_utility_value_28,
+                                           task_value_utility_value_30,
+                                           task_value_utility_value_34,
+                                           task_value_utility_value_35,
+                                           task_value_utility_value_39),
+            expectancy = composite_mean_maker(., expectancy_success__20,
+                                              expectancy_success__21,
+                                              expectancy_success__22,
+                                              #expectancy_success__23,
+                                              expectancy_success__24,
+                                              expectancy_success__25),
+            task_value = composite_mean_maker(., task_value_attainment_value_27,
+                                              task_value_attainment_value_31, 
+                                              task_value_attainment_value_33,
+                                              task_value_attainment_value_36,
+                                              task_value_attainment_value_38,
+                                              task_value_interest_value_29,
+                                              task_value_interest_value_32,
+                                              task_value_interest_value_37,
+                                              task_value_interest_value_40,
+                                              task_value_utility_value_28,
+                                              task_value_utility_value_30,
+                                              task_value_utility_value_34,
+                                              task_value_utility_value_35,
+                                              task_value_utility_value_39),
+            task_effort = composite_mean_maker(., full_cost_task_effort_cost_42,
+                                               full_cost_task_effort_cost_45,
+                                               full_cost_task_effort_cost_46,
+                                               full_cost_task_effort_cost_51,
+                                               full_cost_task_effort_cost_57),
+            outside_effort = composite_mean_maker(., full_cost_outside_effort_cost_44,
+                                                  full_cost_outside_effort_cost_47,
+                                                  full_cost_outside_effort_cost_50,
+                                                  full_cost_outside_effort_cost_52),
+            lova = composite_mean_maker(., full_cost_loss_valued_alternatives_43,
+                                        full_cost_loss_valued_alternatives_49,
+                                        full_cost_loss_valued_alternatives_53,
+                                        full_cost_loss_valued_alternatives_56),
+            emotional_costs = composite_mean_maker(., full_cost_emotional_cost_41,
+                                                   full_cost_emotional_cost_48,
+                                                   full_cost_emotional_cost_54,
+                                                   full_cost_emotional_cost_55,
+                                                   full_cost_emotional_cost_58,
+                                                   full_cost_emotional_cost_59),
+            cost = composite_mean_maker(., full_cost_task_effort_cost_42,
+                                        full_cost_task_effort_cost_45,
+                                        full_cost_task_effort_cost_46,
+                                        full_cost_task_effort_cost_51,
+                                        full_cost_task_effort_cost_57,
+                                        full_cost_outside_effort_cost_44,
+                                        full_cost_outside_effort_cost_47,
+                                        full_cost_outside_effort_cost_50,
+                                        full_cost_outside_effort_cost_52,
+                                        full_cost_loss_valued_alternatives_43,
+                                        full_cost_loss_valued_alternatives_49,
+                                        full_cost_loss_valued_alternatives_53,
+                                        full_cost_loss_valued_alternatives_56,
+                                        full_cost_emotional_cost_41,
+                                        full_cost_emotional_cost_48,
+                                        full_cost_emotional_cost_54,
+                                        full_cost_emotional_cost_55,
+                                        full_cost_emotional_cost_58,
+                                        full_cost_emotional_cost_59),
+            behavioral_intentions = composite_mean_maker(., intention_use__18, intention_use__19),
+            Site)
+```
+
+```{r}
+o %>% 
+  select(perceived_usefulness,
+         perceived_ease_use,
+         computer_attitudes,
+         behavioral_intentions,
+         subjective_norms,
+         facilitating_conditions,
+         attainment,
+         interest,
+         utility,
+         expectancy,
+         task_effort,
+         outside_effort,
+         lova,
+         emotional_costs) %>% 
+  psych::describe()
+```
+
+```{r}
+o %>% 
+  select(perceived_usefulness,
+         perceived_ease_use,
+         computer_attitudes,
+         behavioral_intentions,
+         subjective_norms,
+         facilitating_conditions,
+         attainment,
+         interest,
+         utility,
+         expectancy,
+         task_effort,
+         outside_effort,
+         lova,
+         emotional_costs) %>% 
+  apaTables::apa.cor.table(filename = "composite-descriptives.doc")
+```
+
+# Means (and SD) by site
+
+```{r}
+o %>% 
+  group_by(Site) %>% 
+  skimr::skim() %>% 
+  DT::datatable()
+```
+
+## Manova by site (overall)
+
+```{r}
+res.man <- manova(cbind(perceived_usefulness,
+                        perceived_ease_use,
+                        computer_attitudes,
+                        behavioral_intentions,
+                        subjective_norms,
+                        facilitating_conditions,
+                        attainment,
+                        interest,
+                        utility,
+                        expectancy,
+                        task_effort,
+                        outside_effort,
+                        lova,
+                        emotional_costs) ~ Site, data = o)
+
+summary(res.man)
+# summary.aov(res.man)
+```
+
+## Manova by site (by groups of variables)
+
+```{r}
+man_tam <- manova(cbind(perceived_usefulness,
+                        perceived_ease_use,
+                        computer_attitudes,
+                        behavioral_intentions,
+                        subjective_norms,
+                        facilitating_conditions) ~ Site, data = o)
+
+man_evt <- manova(cbind(attainment,
+                        interest,
+                        utility,
+                        expectancy) ~ Site, data = o)
+
+man_cost <- manova(cbind(task_effort,
+                         outside_effort,
+                         lova,
+                         emotional_costs) ~ Site, data = o)
+
+summary(man_tam)
+#summary.aov(man_tam)
+
+summary(man_evt)
+#summary.aov(man_evt)
+
+summary(man_cost)
+#summary.aov(man_cost)
+```
+
+# Stage 1
+
+Changes made:
+- tm_prcvd_s__12 - tam_perceived_ease_use_12 - done  
+- tm_cmptr_tt_17 - tam_computer_attitudes_17 - done  
+
+## A two-factor CFA will be conducted on the subjective norms and facilitating conditions scales (see “independent variables”; Teo et al. (2008).
+
+```{r}
+fitmod <- '
+
+# factors 
+
+subjective_norms =~ 
+tam_subjective_norm_2 +
+tam_subjective_norm_4
+
+facilitating_conditions =~ 
+tam_facilitating_condition_5 +
+tam_facilitating_condition_13
+'
+
+m1 <- cfa(fitmod, data = d)
+summary(m1, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+reliability(m1)
+# run the code below to confirm that the above gives the same values for alpha
+# psych::alpha(data.frame(d$tam_subjective_norm_2, d$tam_subjective_norm_4))
+lavInspect(m1)
+```
+
+## A separate two-factor CFA will be conducted on perceived usefulness and perceived ease of use (see “mediators”; Teo et al., 2008)
+
+```{r}
+fitmod <- '
+
+# factors 
+
+perceived_usefulness =~ 
+tam_perceived_usefulness_1 + 
+tam_perceived_usefulness_9 + 
+tam_perceived_usefulness_11 +
+tam_perceived_usefulness_15
+
+perceived_ease_use =~ 
+tam_perceived_ease_use_3 + 
+tam_perceived_ease_use_10 + 
+# tam_perceived_ease_use_12 +
+tam_perceived_ease_use_16
+'
+
+m2 <- cfa(fitmod, data = d)
+summary(m2, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+reliability(m2)
+```
+
+## A one-factor CFA will be conducted on the computer attitude scale (see “dependent variables”; Teo et al., 2008)
+
+```{r}
+fitmod <- '
+
+# factors 
+
+computer_attitudes =~ 
+tam_computer_attitudes_6 +
+tam_computer_attitudes_7 +
+tam_computer_attitudes_8 +
+tam_computer_attitudes_14
+# tam_computer_attitudes_17
+
+'
+
+m3 <- cfa(fitmod, data = d)
+summary(m3, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+reliability(m3)
+```
+
+## First, a four-factor CFA will be conducted on interest value, attainment value, utility value, and expectancy for success
+
+```{r}
+fitmod <- '
+
+attainment =~ 
+task_value_attainment_value_27 +
+task_value_attainment_value_31 +
+task_value_attainment_value_33 + 
+task_value_attainment_value_36 +
+task_value_attainment_value_38
+
+interest =~
+task_value_interest_value_29 + 
+task_value_interest_value_32 +
+task_value_interest_value_37 + 
+task_value_interest_value_40
+
+utility =~
+task_value_utility_value_28 + 
+task_value_utility_value_30 +
+task_value_utility_value_34 + 
+task_value_utility_value_35 +
+task_value_utility_value_39
+
+expectancy =~ 
+expectancy_success__20 +
+expectancy_success__21 +
+expectancy_success__22 +
+# expectancy_success__23 +
+expectancy_success__24 +
+expectancy_success__25
+
+'
+
+m4 <- cfa(fitmod, data = d)
+summary(m4, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+reliability(m4)
+```
+
+## Since interest value, attainment value, and utility value are often highly correlated (e.g., Linnenbrink-Garcia et al., 2018), a competing CFA will be conducted with expectancy for success and task value (interest, attainment, and utility value).)
+
+```{r}
+fitmod <- '
+
+# factors 
+
+task_value =~ 
+task_value_attainment_value_27 +
+task_value_attainment_value_31 +
+task_value_attainment_value_33 + 
+task_value_attainment_value_36 +
+task_value_attainment_value_38 +
+task_value_interest_value_29 + 
+task_value_interest_value_32 +
+task_value_interest_value_37 + 
+task_value_interest_value_40 +
+task_value_utility_value_28 + 
+task_value_utility_value_30 +
+task_value_utility_value_34 + 
+task_value_utility_value_35 +
+task_value_utility_value_39
+
+expectancy =~ 
+expectancy_success__20 +
+expectancy_success__21 +
+expectancy_success__22 +
+# expectancy_success__23 +
+expectancy_success__24 +
+expectancy_success__25
+
+'
+
+m5 <- cfa(fitmod, data = d)
+summary(m5, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+reliability(m5)
+```
+
+## A four-factor CFA will be conducted on task effort cost, outside effort cost, loss of valued alternatives, and emotional cost.
+
+```{r}
+fitmod <- '
+
+task_effort =~ 
+full_cost_task_effort_cost_42 + 
+full_cost_task_effort_cost_45 +
+full_cost_task_effort_cost_46 + 
+full_cost_task_effort_cost_51 +
+full_cost_task_effort_cost_57
+
+outside_effort =~
+full_cost_outside_effort_cost_44 +
+full_cost_outside_effort_cost_47 +
+full_cost_outside_effort_cost_50 +
+full_cost_outside_effort_cost_52
+
+lova =~ 
+full_cost_loss_valued_alternatives_43 +
+full_cost_loss_valued_alternatives_49 +
+full_cost_loss_valued_alternatives_53 + 
+full_cost_loss_valued_alternatives_56
+
+emotional_costs =~
+full_cost_emotional_cost_41 + 
+full_cost_emotional_cost_48 +
+full_cost_emotional_cost_54 + 
+full_cost_emotional_cost_55 +
+full_cost_emotional_cost_58 + 
+full_cost_emotional_cost_59
+
+'
+
+m6 <- cfa(fitmod, data = d)
+summary(m6, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+reliability(m6)
+```
+
+## Next, since these four cost factors are often highly correlated (see Flake et al., 2015), a one-factor CFA will be conducted for an overall cost factor.
+
+```{r}
+fitmod <- '
+
+cost =~ 
+full_cost_task_effort_cost_42 + 
+full_cost_task_effort_cost_45 +
+full_cost_task_effort_cost_46 + 
+full_cost_task_effort_cost_51 +
+full_cost_task_effort_cost_57 +
+full_cost_outside_effort_cost_44 +
+full_cost_outside_effort_cost_47 +
+full_cost_outside_effort_cost_50 +
+full_cost_outside_effort_cost_52 +
+full_cost_loss_valued_alternatives_43 +
+full_cost_loss_valued_alternatives_49 +
+full_cost_loss_valued_alternatives_53 + 
+full_cost_loss_valued_alternatives_56 +
+full_cost_emotional_cost_41 + 
+full_cost_emotional_cost_48 +
+full_cost_emotional_cost_54 + 
+full_cost_emotional_cost_55 +
+full_cost_emotional_cost_58 + 
+full_cost_emotional_cost_59
+
+'
+
+m7 <- cfa(fitmod, data = d)
+summary(m7, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+reliability(m7)
+```
+
+## A final CFA will be conducted as one factor on the behavioral intentions items (Liu et al., 2010; Taylor & Todd, 1995; Venkatesh & Davis, 1996)
+
+```{r}
+fitmod <- '
+
+behavioral_intentions =~
+intention_use__18 +
+intention_use__19
+
+'
+
+m8 <- cfa(fitmod, data = d)
+summary(m8, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+reliability(m8)
+```
+
+# Stage 2
+
+## The first model (Figure 1) will attempt to replicate the model established in Teo et al. (2008). Specifically, facilitating conditions and subjective norms will predict ease of use and usefulness, ease of use will predict usefulness, and computer attitude will be the final endogenous factor. 
+
+```{r}
+fitmod <- '
+
+# factors 
+
+subjective_norms =~ 
+tam_subjective_norm_2 +
+tam_subjective_norm_4
+
+facilitating_conditions =~ 
+tam_facilitating_condition_5 +
+tam_facilitating_condition_13
+
+perceived_usefulness =~ 
+tam_perceived_usefulness_1 + 
+tam_perceived_usefulness_9 + 
+tam_perceived_usefulness_11 +
+tam_perceived_usefulness_15
+
+perceived_ease_use =~ 
+tam_perceived_ease_use_3 + 
+tam_perceived_ease_use_10 + 
+# tam_perceived_ease_use_12 +
+tam_perceived_ease_use_16
+
+computer_attitudes =~ 
+tam_computer_attitudes_6 +
+tam_computer_attitudes_7 +
+tam_computer_attitudes_8 +
+tam_computer_attitudes_14
+# tam_computer_attitudes_17
+
+# regressions
+
+computer_attitudes ~ perceived_ease_use + perceived_usefulness + subjective_norms + facilitating_conditions
+perceived_ease_use ~ facilitating_conditions
+perceived_usefulness ~  subjective_norms + perceived_ease_use
+'
+
+m2_1 <- sem(fitmod, data = d, meanstructure = T)
+summary(m2_1, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+```
+
+## The second model (Figure 2) will extend Teo et al.’s (2008) original model by including behavioral intentions as a final endogenous variable, which will be predicted by computer attitude. 
+
+```{r}
+fitmod <- '
+
+# factors 
+
+subjective_norms =~ 
+tam_subjective_norm_2 +
+tam_subjective_norm_4
+
+facilitating_conditions =~ 
+tam_facilitating_condition_5 +
+tam_facilitating_condition_13
+
+perceived_usefulness =~ 
+tam_perceived_usefulness_1 + 
+tam_perceived_usefulness_9 + 
+tam_perceived_usefulness_11 +
+tam_perceived_usefulness_15
+
+perceived_ease_use =~ 
+tam_perceived_ease_use_3 + 
+tam_perceived_ease_use_10 + 
+# tam_perceived_ease_use_12 +
+tam_perceived_ease_use_16
+
+computer_attitudes =~ 
+tam_computer_attitudes_6 +
+tam_computer_attitudes_7 +
+tam_computer_attitudes_8 +
+tam_computer_attitudes_14
+# tam_computer_attitudes_17
+
+behavioral_intentions =~
+intention_use__18 +
+intention_use__19
+
+# regressions
+
+computer_attitudes ~ perceived_ease_use + perceived_usefulness + subjective_norms + facilitating_conditions
+perceived_ease_use ~ facilitating_conditions
+perceived_usefulness ~  subjective_norms + perceived_ease_use
+behavioral_intentions ~ computer_attitudes
+'
+
+m2_2 <- sem(fitmod, data = d)
+summary(m2_2, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+```
+
+# Stage 3
+
+John comment: can you run the "Stage 3" analyses (the third and fourth models) again with expectancy, overall task value, and overall cost
+
+## The third model (Figure 3) is based on the EVT and will examine expectancy, values, and costs as mediators of attitudes and behavioral intentions.
+
+```{r}
+fitmod <- '
+
+# factors 
+
+computer_attitudes =~ 
+tam_computer_attitudes_6 +
+tam_computer_attitudes_7 +
+tam_computer_attitudes_8 +
+tam_computer_attitudes_14
+# tam_computer_attitudes_17
+
+expectancy =~ 
+expectancy_success__20 +
+expectancy_success__21 +
+expectancy_success__22 +
+# expectancy_success__23 +
+expectancy_success__24 +
+expectancy_success__25
+
+attainment =~ 
+task_value_attainment_value_27 +
+task_value_attainment_value_31 +
+task_value_attainment_value_33 + 
+task_value_attainment_value_36 +
+task_value_attainment_value_38
+
+interest =~
+task_value_interest_value_29 + 
+task_value_interest_value_32 +
+task_value_interest_value_37 + 
+task_value_interest_value_40
+
+utility =~
+task_value_utility_value_28 + 
+task_value_utility_value_30 +
+task_value_utility_value_34 + 
+task_value_utility_value_35 +
+task_value_utility_value_39
+
+task_effort =~ 
+full_cost_task_effort_cost_42 + 
+full_cost_task_effort_cost_45 +
+full_cost_task_effort_cost_46 + 
+full_cost_task_effort_cost_51 +
+full_cost_task_effort_cost_57
+
+outside_effort =~
+full_cost_outside_effort_cost_44 +
+full_cost_outside_effort_cost_47 +
+full_cost_outside_effort_cost_50 +
+full_cost_outside_effort_cost_52
+
+lova =~ 
+full_cost_loss_valued_alternatives_43 +
+full_cost_loss_valued_alternatives_49 +
+full_cost_loss_valued_alternatives_53 + 
+full_cost_loss_valued_alternatives_56
+
+emotional_costs =~
+full_cost_emotional_cost_41 + 
+full_cost_emotional_cost_48 +
+full_cost_emotional_cost_54 + 
+full_cost_emotional_cost_55 +
+full_cost_emotional_cost_58 + 
+full_cost_emotional_cost_59
+
+behavioral_intentions =~
+intention_use__18 +
+intention_use__19
+
+# regressions
+
+expectancy ~ computer_attitudes
+attainment ~ computer_attitudes
+interest ~ computer_attitudes
+utility ~ computer_attitudes
+task_effort ~ computer_attitudes
+outside_effort ~ computer_attitudes
+lova ~ computer_attitudes
+emotional_costs ~ computer_attitudes
+
+behavioral_intentions ~ 
+expectancy +
+attainment +
+interest +
+utility +
+task_effort +
+outside_effort +
+lova + 
+emotional_costs
+'
+
+m2_3 <- sem(fitmod, data = d)
+summary(m2_3, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+```
+
+## The fourth model (Figure 4) is guided by both TAMs and EVT and will test expectancy, values, and costs as antecedents of both computer attitude and behavioral intentions.
+
+```{r}
+fitmod <- '
+
+# factors
+
+computer_attitudes =~ 
+tam_computer_attitudes_6 +
+tam_computer_attitudes_7 +
+tam_computer_attitudes_8 +
+tam_computer_attitudes_14
+# tam_computer_attitudes_17
+
+expectancy =~ 
+expectancy_success__20 +
+expectancy_success__21 +
+expectancy_success__22 +
+# expectancy_success__23 +
+expectancy_success__24 +
+expectancy_success__25
+
+attainment =~ 
+task_value_attainment_value_27 +
+task_value_attainment_value_31 +
+task_value_attainment_value_33 + 
+task_value_attainment_value_36 +
+task_value_attainment_value_38
+
+interest =~
+task_value_interest_value_29 + 
+task_value_interest_value_32 +
+task_value_interest_value_37 + 
+task_value_interest_value_40
+
+utility =~
+task_value_utility_value_28 + 
+task_value_utility_value_30 +
+task_value_utility_value_34 + 
+task_value_utility_value_35 +
+task_value_utility_value_39
+
+task_effort =~ 
+full_cost_task_effort_cost_42 + 
+full_cost_task_effort_cost_45 +
+full_cost_task_effort_cost_46 + 
+full_cost_task_effort_cost_51 +
+full_cost_task_effort_cost_57
+
+outside_effort =~
+full_cost_outside_effort_cost_44 +
+full_cost_outside_effort_cost_47 +
+full_cost_outside_effort_cost_50 +
+full_cost_outside_effort_cost_52
+
+lova =~ 
+full_cost_loss_valued_alternatives_43 +
+full_cost_loss_valued_alternatives_49 +
+full_cost_loss_valued_alternatives_53 + 
+full_cost_loss_valued_alternatives_56
+
+emotional_costs =~
+full_cost_emotional_cost_41 + 
+full_cost_emotional_cost_48 +
+full_cost_emotional_cost_54 + 
+full_cost_emotional_cost_55 +
+full_cost_emotional_cost_58 + 
+full_cost_emotional_cost_59
+
+behavioral_intentions =~
+intention_use__18 +
+intention_use__19
+
+# regressions 
+
+computer_attitudes ~ expectancy
+computer_attitudes ~ attainment
+computer_attitudes ~ interest
+computer_attitudes ~ utility
+computer_attitudes ~ task_effort
+computer_attitudes ~ outside_effort
+computer_attitudes ~ lova
+computer_attitudes ~ emotional_costs
+
+behavioral_intentions ~ expectancy
+behavioral_intentions ~ attainment
+behavioral_intentions ~ interest
+behavioral_intentions ~ utility
+behavioral_intentions ~ task_effort
+behavioral_intentions ~ outside_effort
+behavioral_intentions ~ lova
+behavioral_intentions ~ emotional_costs
+behavioral_intentions ~ computer_attitudes
+'
+
+m2_4 <- sem(fitmod, data = d)
+summary(m2_4, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+```
+
+# Supplementary 
+
+CFA 
+
+```{r}
+
+```
+
+## Adding composites for 
+```{r}
+fitmod <- '
+
+# factors 
+
+computer_attitudes =~ 
+tam_computer_attitudes_6 +
+tam_computer_attitudes_7 +
+tam_computer_attitudes_8 +
+tam_computer_attitudes_14
+# tam_computer_attitudes_17
+
+expectancy =~ 
+expectancy_success__20 +
+expectancy_success__21 +
+expectancy_success__22 +
+# expectancy_success__23 +
+expectancy_success__24 +
+expectancy_success__25
+
+attainment =~ 
+task_value_attainment_value_27 +
+task_value_attainment_value_31 +
+task_value_attainment_value_33 + 
+task_value_attainment_value_36 +
+task_value_attainment_value_38
+
+interest =~
+task_value_interest_value_29 + 
+task_value_interest_value_32 +
+task_value_interest_value_37 + 
+task_value_interest_value_40
+
+utility =~
+task_value_utility_value_28 + 
+task_value_utility_value_30 +
+task_value_utility_value_34 + 
+task_value_utility_value_35 +
+task_value_utility_value_39
+
+task_effort =~ 
+full_cost_task_effort_cost_42 + 
+full_cost_task_effort_cost_45 +
+full_cost_task_effort_cost_46 + 
+full_cost_task_effort_cost_51 +
+full_cost_task_effort_cost_57
+
+outside_effort =~
+full_cost_outside_effort_cost_44 +
+full_cost_outside_effort_cost_47 +
+full_cost_outside_effort_cost_50 +
+full_cost_outside_effort_cost_52
+
+lova =~ 
+full_cost_loss_valued_alternatives_43 +
+full_cost_loss_valued_alternatives_49 +
+full_cost_loss_valued_alternatives_53 + 
+full_cost_loss_valued_alternatives_56
+
+emotional_costs =~
+full_cost_emotional_cost_41 + 
+full_cost_emotional_cost_48 +
+full_cost_emotional_cost_54 + 
+full_cost_emotional_cost_55 +
+full_cost_emotional_cost_58 + 
+full_cost_emotional_cost_59
+
+behavioral_intentions =~
+intention_use__18 +
+intention_use__19
+
+# regressions
+
+expectancy ~ computer_attitudes
+attainment ~ computer_attitudes
+interest ~ computer_attitudes
+utility ~ computer_attitudes
+task_effort ~ computer_attitudes
+outside_effort ~ computer_attitudes
+lova ~ computer_attitudes
+emotional_costs ~ computer_attitudes
+
+behavioral_intentions ~ 
+expectancy +
+attainment +
+interest +
+utility +
+task_effort +
+outside_effort +
+lova + 
+emotional_costs
+'
+
+m4_1 <- sem(fitmod, data = d)
+summary(m4_1, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+```
